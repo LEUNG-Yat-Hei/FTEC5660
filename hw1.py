@@ -63,7 +63,54 @@ def build_chain() -> Any:
     ``deepseek-v4-flash-vision-exp``. The API key is loaded from .env.
     """
     ### YOUR CODE HERE
-    return None
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_deepseek import ChatDeepSeek
+    from pydantic import BaseModel, Field
+
+    class ReceiptInfo(BaseModel):
+        paid_after_rounding: float = Field(
+            description="Final HKD amount actually paid, after applying the receipt's rounding adjustment."
+        )
+        rounding: float = Field(
+            description="Signed HKD rounding adjustment applied to the final payment; use 0 when no rounding line appears."
+        )
+        discount_items: list[float] = Field(
+            default_factory=list,
+            description="Positive HKD amounts for every discount or price reduction on the receipt. Do not include rounding adjustments."
+        )
+
+    prompt = ChatPromptTemplate.from_messages([
+    (
+        "human",
+        [
+            {
+                "type": "text",
+                "text": (
+                    "Read this supermarket receipt. Return a JSON object matching the requested schema and no additional text.\n"
+                    "- paid_after_rounding: the final amount actually paid after the rounding line.\n"
+                    "- rounding: the signed rounding adjustment, or 0 if none is printed.\n"
+                    "- discount_items: every coupon, promotion, member, app, packaging-damage, or percentage discount. "
+                    "Return a list of positive numeric discount amounts; exclude rounding and use an empty list if there are none.\n"
+                    "Use only numeric HKD values, without currency symbols or commas."
+                ),
+            },
+            {
+                "type": "image_url",
+                "image_url": {"url": "{image}"},
+            },
+        ],
+    )
+])
+
+    structured_model = ChatDeepSeek(
+        model = "deepseek-v4-flash-vision-exp",
+        cache=False
+    ).with_structured_output(
+        ReceiptInfo, method="json_mode"
+    )
+
+
+    return prompt | structured_model
 
 
 def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
@@ -79,8 +126,18 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
     to process independent receipt-extraction prompts in parallel.
     """
     ### YOUR CODE HERE
-    _ = (chain, images)
-    return {QUERY_1: DUMMY_RESPONSE, QUERY_2: DUMMY_RESPONSE}
+    inputs = [{"image": image_data_url(path)} for path in images]
+    results = chain.batch(inputs, config={'max_concurrency': 5})
+    first_answer, second_answer = 0, 0
+    for result in results:
+        print(result)
+        first_answer += result.paid_after_rounding
+        second_answer += (
+            result.paid_after_rounding
+            - result.rounding
+            + sum(result.discount_items)
+        )
+    return {QUERY_1: f"HK${first_answer:,.2f}", QUERY_2: f"HK${second_answer:,.2f}"}
 
 
 # Everything below is provided runner/scoring code. No edits are needed.

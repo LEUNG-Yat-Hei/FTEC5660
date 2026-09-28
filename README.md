@@ -49,5 +49,22 @@ homework runner.
 
 
 ## Homework 1 solution: 
-> to students: please fill your solution description here.
+
+### Chain Visualization
+```mermaid
+flowchart LR
+  A[Receipt image] --> B[DeepSeek Flash Vision model]
+  B --> C[Extracting Structured Receipt Data]
+  C --> D[Paid after rounding]
+  C --> E[Rounding]
+  C --> F[Discount items]
+  D --> G[Calculate Query 1<br/>Sum paid after rounding]
+  D --> H[Calculate Query 2<br/>Paid after rounding - rounding + discount items]
+  E --> H
+  F --> H
+```
+### Explanation
+To answer Queries 1 and 2, the chain first extracts the required information from each receipt: the amount paid after rounding, the rounding adjustment, and all discount amounts. Because the model may be less reliable when performing arithmetic, I do not ask it to answer the two queries directly. Instead, I ask it to extract the relevant values in a consistent format.
+
+I use `model.with_structured_output()` and define a `ReceiptInfo` class with `pydantic.BaseModel` to specify the expected response format and simplify the subsequent calculations. The model returns one `ReceiptInfo` object for each receipt, with values stored in the `paid_after_rounding`, `rounding`, and `discount_items` attributes. Query 1 is calculated by summing `paid_after_rounding` across all receipts. Query 2 is calculated as `paid_after_rounding - rounding + sum(discount_items)` for each receipt, then summing the results.
 
